@@ -6,3 +6,4 @@ set(CMAKE_EXE_LINKER_FLAGS "-lmemcached")
 
 add_compile_options(-Wall -Wextra -Wpedantic -g)
 add_executable(memcached_client client.c)
+add_executable(memcached_client_debug client_debug.c)
