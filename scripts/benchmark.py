@@ -89,7 +89,7 @@ if __name__ == '__main__':
     file = open(f'logs/{test_name}.csv', 'w')
     fieldnames = ['run', 'n_ops', 'n_keys', 'key_size', 'value_size', 'duration', 'throughput', *PERF_EVENTS]
     writer = csv.DictWriter(file, fieldnames=fieldnames)
-    writer.writeheader()
+    # writer.writeheader()
 
     # clean and build
     subprocess.run(shlex.split('make clean --directory build'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -123,11 +123,11 @@ if __name__ == '__main__':
                             'n_keys': n_key,
                             'key_size': k_size,
                             'value_size': v_size,
-                            'server_duration': extract_sec_time_elapsed(pref_out),
-                            'client_duration': client_out[0],
                             'throughput': client_out[1],
+                            'client_duration_ms': client_out[0],
                             **dict(zip(PERF_EVENTS, extract_perf_results(pref_out)))
                         }
-                        print_dict(row)
+                        print(row)
+                        # writer.writerow(row)
                         server_process.terminate()
                         print(f'-----------------------')
