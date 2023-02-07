@@ -95,10 +95,10 @@ int main(int argc, char *argv[]) {
     char value[val_len];
     generate_string(value, val_len);
     for (int i = 0; i < n_keys; i++) {
-        printf("Inserting key %s with value %s\n", keys[i], value);
+        fprintf(stderr,"Inserting key %s with value %s\n", keys[i], value);
         memcached_return rc = memcached_add(memc, keys[i], key_len, value, val_len, 0, 0);
         if (rc != MEMCACHED_SUCCESS)
-            printf("Error inserting key %s: %s\n", keys[i], memcached_strerror(memc, rc));
+            fprintf(stderr,"Error inserting key %s: %s\n", keys[i], memcached_strerror(memc, rc));
     }
 
     // main loop
@@ -107,16 +107,16 @@ int main(int argc, char *argv[]) {
         char *key = keys[i % n_keys];
 
         // get key
-        printf("Getting key %s\n", key);
+        fprintf(stderr,"Getting key %s\n", key);
         size_t value_length;
         uint32_t flags;
         memcached_return rc;
         char *v = memcached_get(memc, key, key_len, &value_length, &flags, &rc);
         if (v == NULL) {
-            printf("memcached_get() failed: %s, key: %s\n", memcached_strerror(memc, rc), key);
+            fprintf(stderr,"memcached_get() failed: %s, key: %s\n", memcached_strerror(memc, rc), key);
             continue;
         }
-        printf("Got %s -> %s\n", key, v);
+        fprintf(stderr,"Got %s -> %s\n", key, v);
 
     }
     gettimeofday(&tend, NULL);
