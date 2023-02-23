@@ -79,15 +79,9 @@ int free_keys(char **keys, int n) {
 
 int main(int argc, char *argv[]) {
     argparse(argc, argv);
+
     memcached_st *memc = memcached(config_string, strlen(config_string));
-//    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_CONNECT_TIMEOUT, INT64_MAX);
-//    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_SND_TIMEOUT, INT64_MAX);
-//    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_RCV_TIMEOUT, INT64_MAX);
-
-
     struct timeval tstart, tend;
-
-
     char **keys = malloc(n_keys * sizeof(char *));
     init_keys(keys, n_keys, key_len);
 

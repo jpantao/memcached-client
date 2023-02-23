@@ -14,15 +14,15 @@ static __inline__ unsigned long time_diff(struct timeval *start, struct timeval 
 
 int main(int argc, char *argv[]) {
     memcached_st *memc = memcached(DEFAULT_CONFIG, strlen(DEFAULT_CONFIG));
-    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_CONNECT_TIMEOUT, INT64_MAX);
-    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_SND_TIMEOUT, INT64_MAX);
-    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_RCV_TIMEOUT, INT64_MAX);
+//    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_CONNECT_TIMEOUT, INT64_MAX);
+//    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_SND_TIMEOUT, INT64_MAX);
+//    memcached_behavior_set(memc, MEMCACHED_BEHAVIOR_RCV_TIMEOUT, INT64_MAX);
 
 
     struct timeval tstart, tend;
 
-    char *key = "test_key";
-    char *val = "test_val";
+    char *key = "debugKey";
+    char *val = "debugvalue";
     memcached_return_t rc;
 
     //insert key
@@ -32,6 +32,7 @@ int main(int argc, char *argv[]) {
         if (rc != MEMCACHED_SUCCESS)
             printf("Error inserting key %s: %s\n", key, memcached_strerror(memc, rc));
         gettimeofday(&tend, NULL);
+        printf("key: %s (len=%lu), val: %s(len=%lu)\n", key, strlen(key), val, strlen(val));
         printf("Insert time: %lu us\n", time_diff(&tstart, &tend));
     }
 
@@ -41,6 +42,8 @@ int main(int argc, char *argv[]) {
         char *v = memcached_get(memc, key, strlen(key), NULL, NULL, &rc);
         if (v == NULL)
             printf("memcached_get() failed: %s, key: %s\n", memcached_strerror(memc, rc), key);
+        else
+            printf("key: %s (len=%lu), val: %s(len=%lu)\n", key, strlen(key), v, strlen(v));
         gettimeofday(&tend, NULL);
         printf("Get time: %lu us\n", time_diff(&tstart, &tend));
     }

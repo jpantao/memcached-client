@@ -20,6 +20,8 @@ PERF_EVENTS = [
 ]
 
 MEMCACHED_PORT = 11211
+DRAM_NUMA = 0
+PMEM_NUMA = 3
 
 
 def is_event(string):
@@ -48,9 +50,9 @@ def extract_sec_time_elapsed(perf_out):
     return
 
 
-def launch_memcached(memcached_exec):
-    command = f"perf stat -e {','.join(PERF_EVENTS)} {memcached_exec} -p {MEMCACHED_PORT}"
-    print(command)
+def launch_memcached(memcached_exec, numa_node):
+    command = f"numactl --membind={numa_node} perf stat -e {','.join(PERF_EVENTS)} {memcached_exec} -p {MEMCACHED_PORT}"
+    # print(command)
     p = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p
 
@@ -76,6 +78,10 @@ if __name__ == '__main__':
     parser.add_argument('test_name', action='store', help='Name of the test')
     parser.add_argument('memcached_exec', action='store', help='Path to memcached executable')
     parser.add_argument('--n-runs', '-n', dest='n_runs', default=1, help='Number of runs (default=1)')
+    parser.add_argument('--dram-only', '-d', dest='dram_only', action='store_true', default=False,
+                        help='Only benchmark DRAM')
+    parser.add_argument('--prefetch', '-p', dest='prefetch', action='store_true', default=False,
+                        help='Compile memcached with prefetch activated')
     parser.add_argument('--build-dir', '-b', dest='build_dir', default='build',
                         help='CMake build directory (default=build)')
     args = parser.parse_args()
@@ -92,42 +98,53 @@ if __name__ == '__main__':
     # writer.writeheader()
 
     # clean and build
+    flags = 'CFLAGS="-DPREFETCH"' if args.prefetch else ""
     subprocess.run(shlex.split('make clean --directory build'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    subprocess.run(shlex.split(f'cmake -B build'))
-    subprocess.run(shlex.split('make --directory build'))
-    print('Build done')
+    subprocess.run(shlex.split('cmake -B build'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(shlex.split(f'make --directory build {flags}'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # print('Build done')
 
-    n_ops = [10000]
-    n_keys = [10000]
+    n_ops = [100_000]
+    n_keys = [100_000]
     key_size = [16]
-    value_size = [64]
+    value_size = [100]
+    nodes = [DRAM_NUMA]
+    if not args.dram_only:
+        nodes.append(PMEM_NUMA)
 
     for r in range(1, n_runs + 1):
         for n_op in n_ops:
             for n_key in n_keys:
                 for k_size in key_size:
                     for v_size in value_size:
-                        print(f'---- run={r} n_op={n_op}, n_key={n_key}, k_size={k_size}, v_size={v_size} ----')
-                        server_process = launch_memcached(args.memcached_exec)
-                        client_process = run_memcached_client()
-                        print('Killing memcached')
-                        sleep(10)
-                        kill_memcached()
+                        for node in nodes:
+                            print(f'- run={r} n_op={n_op}, n_key={n_key}, k_size={k_size}, v_size={v_size}, '
+                                  f'node={node} -')
 
-                        pref_out = server_process.communicate()[1].decode('utf-8').strip()
-                        client_out = client_process.stdout.decode('utf-8').strip().split(',')
+                            server_process = launch_memcached(args.memcached_exec, node)
+                            client_process = run_memcached_client()
+                            # print('Killing memcached')
+                            sleep(10)
+                            kill_memcached()
 
-                        row = {
-                            'run': r,
-                            'n_ops': n_op,
-                            'n_keys': n_key,
-                            'key_size': k_size,
-                            'value_size': v_size,
-                            'throughput': client_out[1],
-                            'client_duration_ms': client_out[0],
-                            **dict(zip(PERF_EVENTS, extract_perf_results(pref_out)))
-                        }
-                        print(row)
-                        # writer.writerow(row)
-                        server_process.terminate()
-                        print(f'-----------------------')
+                            pref_out = server_process.communicate()[1].decode('utf-8').strip()
+                            # print(pref_out)
+                            client_out = client_process.stdout.decode('utf-8').strip().split(',')
+                            # print(client_out)
+
+                            row = {
+                                'run': r,
+                                'node': node,
+                                'throughput': client_out[1],
+                                'exec_time_ms': client_out[0],
+                                'n_ops': n_op,
+                                'n_keys': n_key,
+                                'key_size': k_size,
+                                'value_size': v_size,
+                                **dict(zip(PERF_EVENTS, extract_perf_results(pref_out)))
+                            }
+                            # print_dict(row)
+                            print(f'throughput: {row["throughput"]}')
+                            # writer.writerow(row)
+                            server_process.terminate()
+                            print(f'-----------------------')
