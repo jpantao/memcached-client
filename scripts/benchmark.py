@@ -54,6 +54,7 @@ def launch_memcached(memcached_exec, numa_node):
     command = f"numactl --membind={numa_node} perf stat -e {','.join(PERF_EVENTS)} {memcached_exec} -p {MEMCACHED_PORT}"
     # print(command)
     p = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
     return p
 
 
@@ -62,7 +63,7 @@ def kill_memcached():
 
 
 def run_memcached_client():
-    command = f"./{build_dir}/memcached_client -no {n_op} -nk {n_key} -kl {k_size} -vl {v_size}"
+    command = f"./build/memcached_client -no {n_op} -nk {n_key} -kl {k_size} -vl {v_size}"
     print(command)
     p = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p
@@ -76,19 +77,16 @@ def print_dict(d):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Launch memcached client')
     parser.add_argument('test_name', action='store', help='Name of the test')
-    parser.add_argument('memcached_exec', action='store', help='Path to memcached executable')
+    parser.add_argument('memcached_dir', action='store', help='Path to memcached')
+    parser.add_argument('--memcached_build_dir', '-b', dest='memcached_build_dir', default='')
+    parser.add_argument('--memcached-flags', '-f', dest='memcached_flags', default='', help='Memcached compile flags')
     parser.add_argument('--n-runs', '-n', dest='n_runs', default=1, help='Number of runs (default=1)')
     parser.add_argument('--dram-only', '-d', dest='dram_only', action='store_true', default=False,
                         help='Only benchmark DRAM')
-    parser.add_argument('--prefetch', '-p', dest='prefetch', action='store_true', default=False,
-                        help='Compile memcached with prefetch activated')
-    parser.add_argument('--build-dir', '-b', dest='build_dir', default='build',
-                        help='CMake build directory (default=build)')
     args = parser.parse_args()
     os.makedirs('logs', exist_ok=True)
 
     test_name = args.test_name
-    build_dir = args.build_dir
     n_runs = args.n_runs
 
     # Prepare csv file
@@ -97,17 +95,30 @@ if __name__ == '__main__':
     writer = csv.DictWriter(file, fieldnames=fieldnames)
     # writer.writeheader()
 
-    # clean and build
-    flags = 'CFLAGS="-DPREFETCH"' if args.prefetch else ""
+    # clean and build client
     subprocess.run(shlex.split('make clean --directory build'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     subprocess.run(shlex.split('cmake -B build'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    subprocess.run(shlex.split(f'make --directory build {flags}'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    # print('Build done')
+    subprocess.run(shlex.split(f'make --directory build'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    n_ops = [100_000]
-    n_keys = [100_000]
+    # clean and build memcached
+    flags = f'CPPFLAGS="-{args.memcached_flags}"' if len(args.memcached_flags) != 0 else ""
+    build_dir = f'--directory {args.memcached_build_dir}' if len(args.memcached_build_dir) != 0 else ""
+    print(f'Build memcached with flags: {flags}')
+    wd = os.getcwd()
+    os.chdir(args.memcached_dir)
+    subprocess.run(shlex.split(f'./autogen.sh'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(shlex.split(f'./configure'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(shlex.split(f'make clean {build_dir}'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # subprocess.run(shlex.split(f'touch proto_text.c'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # subprocess.run(shlex.split(f'touch memcached.c'), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(shlex.split(f'make {build_dir} {flags}'))
+    os.chdir(wd)
+    print('Build done')
+
+    n_ops = [100_000, 500_000, 1_000_000]
+    n_keys = [1_000_000]
     key_size = [16]
-    value_size = [100]
+    value_size = [500]
     nodes = [DRAM_NUMA]
     if not args.dram_only:
         nodes.append(PMEM_NUMA)
@@ -121,7 +132,7 @@ if __name__ == '__main__':
                             print(f'- run={r} n_op={n_op}, n_key={n_key}, k_size={k_size}, v_size={v_size}, '
                                   f'node={node} -')
 
-                            server_process = launch_memcached(args.memcached_exec, node)
+                            server_process = launch_memcached(f'{args.memcached_dir}/memcached', node)
                             client_process = run_memcached_client()
                             # print('Killing memcached')
                             sleep(10)
@@ -130,6 +141,8 @@ if __name__ == '__main__':
                             pref_out = server_process.communicate()[1].decode('utf-8').strip()
                             # print(pref_out)
                             client_out = client_process.stdout.decode('utf-8').strip().split(',')
+                            with open('logs/memcached.log', 'w') as f:
+                                f.write(server_process.communicate()[0].decode('utf-8').strip())
                             # print(client_out)
 
                             row = {
@@ -145,6 +158,8 @@ if __name__ == '__main__':
                             }
                             # print_dict(row)
                             print(f'throughput: {row["throughput"]}')
+                            print(f'L1-dcache-load-misses: {row["L1-dcache-load-misses"]}')
                             # writer.writerow(row)
+
                             server_process.terminate()
                             print(f'-----------------------')
